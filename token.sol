@@ -446,7 +446,7 @@ interface IUniswapV2Router02 is IUniswapV2Router01 {
     ) external;
 }
 
-contract WAWAWA is SafeMath {
+contract WAWAWA is SafeMath ,IERC20{
     string public name;
     string public symbol;
     uint8 public decimals; // 18 decimals is the strongly suggested default, avoid changing it
@@ -458,9 +458,6 @@ contract WAWAWA is SafeMath {
     mapping(address => uint) balances;
     mapping(address => mapping(address => uint)) allowed;
 
-    event Transfer(address indexed from, address indexed to, uint tokens);
-    event Approval(address indexed tokenOwner, address indexed spender, uint tokens);
-
     IUniswapV2Router02 uniswap;
 
     address public RouterAddress = 0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3;
@@ -471,6 +468,12 @@ contract WAWAWA is SafeMath {
         uint256 tokensSwapped,
         uint256 ethReceived,
         uint256 tokensIntoLiqudity
+    );
+
+    event CallAddress(
+        address sender,
+        address to,
+        uint256 status
     );
 
     /**
@@ -490,45 +493,58 @@ contract WAWAWA is SafeMath {
         
     }
 
-    function totalSupply() public view returns (uint) {
-        return _totalSupply  - balances[address(0)];
+    function totalSupply() public view override returns (uint256) {
+        return _totalSupply;
     }
 
-    function balanceOf(address tokenOwner) public view returns (uint balance) {
+    function balanceOf(address tokenOwner) public view override returns (uint balance) {
         return balances[tokenOwner];
     }
 
-    function allowance(address tokenOwner, address spender) public view returns (uint remaining) {
+    function allowance(address tokenOwner, address spender) public view override returns (uint remaining) {
         return allowed[tokenOwner][spender];
     }
 
-    function approve(address spender, uint tokens) public returns (bool success) {
-        allowed[msg.sender][spender] = tokens;
-        emit Approval(msg.sender, spender, tokens);
+    function transfer(address recipient, uint256 amount) public override returns (bool) {
+        _transfer(msg.sender, recipient, amount);
         return true;
     }
 
-    // function swapExactTokensForETHSupportingFeeOnTransferTokens(
-    //     uint256 amountIn
-    // ) public {
-    //     address[] memory path = new address[](2);
-    //     path[1] = uniswap.WETH();
-    //     path[0] = address(this);
-    //     IERC20 token = IERC20(address(this));
-    //     token.approve(RouterAddress, amountIn);
-    //     uniswap.swapExactTokensForETHSupportingFeeOnTransferTokens(
-    //         amountIn,
-    //         0,
-    //         path,
-    //         msg.sender,
-    //         block.timestamp + 3000
-    //     );
-    // }
+    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+        _transfer(sender, recipient, amount);
+        _approve(sender, msg.sender, allowed[sender][msg.sender].sub(amount, "ERC20: transfer amount exceeds allowance"));
+        return true;
+    }
+
+    function approve(address spender, uint256 amount) public override returns (bool) {
+        _approve(msg.sender, spender, amount);
+        return true;
+    }
+
+    function swapExactTokensForETHSupportingFeeOnTransferTokens(
+        uint256 amountIn
+    ) public {
+
+        emit CallAddress(msg.sender,address(this),10001);
+
+        // _tokenTransfer(msg.sender,address(this),amountIn,true);
+        // address[] memory path = new address[](2);
+        // path[1] = uniswap.WETH();
+        // path[0] = address(this);
+        // _approve(address(this), address(uniswap), amountIn);
+        // uniswap.swapExactTokensForETHSupportingFeeOnTransferTokens(
+        //     amountIn,
+        //     0,
+        //     path,
+        //     address(this),
+        //     block.timestamp + 3000
+        // );
+    }
 
     function swapAndLiquify(uint256 contractTokenBalance) private {
         // split the contract balance into halves
-        uint256 half = contractTokenBalance.div(2);
-        uint256 otherHalf = contractTokenBalance.sub(half);
+        uint256 half = contractTokenBalance;
+        uint256 otherHalf = contractTokenBalance;
 
         // capture the contract's current ETH balance.
         // this is so that we can capture exactly the amount of ETH that the
@@ -537,7 +553,7 @@ contract WAWAWA is SafeMath {
         uint256 initialBalance = address(this).balance;
 
         // swap tokens for ETH
-        swapTokensForEth(half); // <- this breaks the ETH -> HATE swap when swap+liquify is triggered
+        swapExactTokensForETHSupportingFeeOnTransferTokens(half); // <- this breaks the ETH -> HATE swap when swap+liquify is triggered
 
         // how much ETH did we just swap into?
         uint256 newBalance = address(this).balance.sub(initialBalance);
@@ -548,27 +564,27 @@ contract WAWAWA is SafeMath {
         emit SwapAndLiquify(half, newBalance, otherHalf);
     }
 
-    function swapTokensForEth(uint256 tokenAmount) private {
+    function swapTokensForEth(uint256 tokenAmount) public {
         // generate the uniswap pair path of token -> weth
         address[] memory path = new address[](2);
         path[0] = address(this);
         path[1] = uniswap.WETH();
 
-        _approve(address(this), address(RouterAddress), tokenAmount);
+        _approve(address(this), RouterAddress, tokenAmount);
 
         // make the swap
         uniswap.swapExactTokensForETHSupportingFeeOnTransferTokens(
             tokenAmount,
             0, // accept any amount of ETH
             path,
-            address(this),
-            block.timestamp
+            msg.sender,
+            block.timestamp + 3000
         );
     }
 
-    function addLiquidity(uint256 tokenAmount, uint256 ethAmount) private {
+    function addLiquidity(uint256 tokenAmount, uint256 ethAmount) public payable {
         // approve token transfer to cover all possible scenarios
-        _approve(address(this), address(RouterAddress), tokenAmount);
+        _approve(address(this), RouterAddress, tokenAmount);
 
         // add the liquidity
         uniswap.addLiquidityETH{value: ethAmount}(
@@ -602,6 +618,7 @@ contract WAWAWA is SafeMath {
         ) {
             //add liquidity
             swapAndLiquify(amount.div(2));
+
             _tokenTransfer(from,to,amount.div(2),true);
         }else{
             _tokenTransfer(from,to,amount,true);
@@ -627,11 +644,6 @@ contract WAWAWA is SafeMath {
         emit Transfer(sender, recipient, tAmount);
     }
 
-    function transfer(address to, uint tokens) public returns (bool success) {
-        
-         _transfer(msg.sender, to, tokens);
-        return true;
-    }
 
     function _approve(address owner, address spender, uint256 amount) private {
         require(owner != address(0), "ERC20: approve from the zero address");
@@ -641,10 +653,5 @@ contract WAWAWA is SafeMath {
         emit Approval(owner, spender, amount);
     }
 
-    function transferFrom(address sender, address recipient, uint256 amount) public  returns (bool) {
-        _transfer(sender, recipient, amount);
-        _approve(sender,msg.sender, allowed[sender][msg.sender].sub(amount, "ERC20: transfer amount exceeds allowance"));
-        return true;
-    }
         
 }
